@@ -1,3 +1,15 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Hidratación">
+  <meta name="theme-color" content="#ffffff" id="theme-color-meta">
+  <title>Hidratación 💧</title>
+</head>
+<body style="margin:0;padding:0;background:var(--color-background-tertiary, #efeff4);">
 
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -5,15 +17,15 @@
   .force-light { --color-background-primary: #ffffff; --color-background-secondary: #f2f2f7; --color-background-tertiary: #efeff4; --color-text-primary: #000000; --color-text-secondary: #6c6c70; --color-text-tertiary: #aeaeb2; --color-border-tertiary: #e5e5ea; --color-border-secondary: #c7c7cc; }
   /* Force dark theme override */
   .force-dark { --color-background-primary: #1c1c1e; --color-background-secondary: #2c2c2e; --color-background-tertiary: #000000; --color-text-primary: #ffffff; --color-text-secondary: #ebebf5cc; --color-text-tertiary: #ebebf54d; --color-border-tertiary: #38383a; --color-border-secondary: #48484a; }
-  #app { max-width: 390px; margin: 0 auto; min-height: 100vh; background: var(--color-background-tertiary); padding-bottom: 100px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif; }
-  .nav-bar { display: flex; justify-content: space-around; position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 390px; background: var(--color-background-primary); border-top: 0.5px solid var(--color-border-tertiary); padding: 8px 0 20px; z-index: 100; }
+  #app { max-width: 430px; margin: 0 auto; min-height: 100vh; background: var(--color-background-tertiary); padding-bottom: calc(100px + env(safe-area-inset-bottom)); width: 100%; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif; }
+  .nav-bar { display: flex; justify-content: space-around; position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 430px; background: var(--color-background-primary); border-top: 0.5px solid var(--color-border-tertiary); padding: 8px 0 calc(20px + env(safe-area-inset-bottom)); z-index: 100; }
   .nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; padding: 4px 20px; border-radius: 10px; border: none; background: none; }
   .nav-icon { font-size: 22px; line-height: 1; }
   .nav-label { font-size: 10px; color: var(--color-text-tertiary); font-weight: 400; }
   .nav-item.active .nav-label { color: #1a8cff; font-weight: 500; }
   .screen { display: none; }
   .screen.active { display: block; }
-  .header { padding: 56px 20px 12px; }
+  .header { padding: calc(56px + env(safe-area-inset-top, 44px)) 20px 12px; position: relative; }
   .header-date { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 4px; }
   .header-title { font-size: 28px; font-weight: 700; color: var(--color-text-primary); letter-spacing: -0.5px; }
   .card { background: var(--color-background-primary); border-radius: 16px; border: 0.5px solid var(--color-border-tertiary); margin: 0 16px 12px; overflow: hidden; }
@@ -76,7 +88,7 @@
   .flash-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; background: rgba(26,140,255,0.12); transition: opacity 0.2s; z-index: 200; }
   /* Header buttons */
   .header { position: relative; }
-  .header-actions { position: absolute; top: 56px; right: 20px; display: flex; gap: 8px; align-items: center; }
+  .header-actions { position: absolute; top: calc(56px + env(safe-area-inset-top, 44px)); right: 20px; display: flex; gap: 8px; align-items: center; }
   .icon-btn { background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); border-radius: 10px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 17px; transition: transform 0.12s, background 0.12s; }
   .icon-btn:active { transform: scale(0.9); background: var(--color-border-tertiary); }
   /* Reset confirmation modal */
@@ -478,9 +490,37 @@ function toggleTheme() {
   }
   localStorage.setItem('stanley_theme', currentTheme);
   applyTheme(currentTheme);
+
+// Update theme-color meta for Safari status bar
+function updateThemeColorMeta(theme) {
+  const meta = document.getElementById('theme-color-meta');
+  if (!meta) return;
+  if (theme === 'dark') {
+    meta.content = '#1c1c1e';
+    document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]').content = 'black-translucent';
+  } else {
+    meta.content = '#ffffff';
+    document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]').content = 'default';
+  }
+}
+updateThemeColorMeta(currentTheme);
 }
 
 applyTheme(currentTheme);
+
+// Update theme-color meta for Safari status bar
+function updateThemeColorMeta(theme) {
+  const meta = document.getElementById('theme-color-meta');
+  if (!meta) return;
+  if (theme === 'dark') {
+    meta.content = '#1c1c1e';
+    document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]').content = 'black-translucent';
+  } else {
+    meta.content = '#ffffff';
+    document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]').content = 'default';
+  }
+}
+updateThemeColorMeta(currentTheme);
 
 // ─── Reset Day ───────────────────────────────────────────────────────────────
 function showResetModal() {
@@ -502,3 +542,6 @@ function confirmReset() {
   renderHome();
 }
 </script>
+
+</body>
+</html>
