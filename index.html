@@ -266,7 +266,7 @@ const RING_CIRC = 2 * Math.PI * 33;
 function getToday() { return new Date().toISOString().slice(0,10); }
 
 function loadData() {
-  try { const r = localStorage.getItem('stanley_v2'); return r ? JSON.parse(r) : {days:{},streak:0,bestStreak:0}; }
+  try { const r = localStorage.getItem('stanley_v2'); return r ? JSON.parse(r) : {days:{},streak:0,bestStreak:0,lastVisit:''}; }
   catch(e) { return {days:{},streak:0,bestStreak:0}; }
 }
 function saveData(d) { try { localStorage.setItem('stanley_v2', JSON.stringify(d)); } catch(e){} }
@@ -275,8 +275,27 @@ let data = loadData();
 let lastAdded = 0, canUndo = false;
 
 function checkDay() {
-  const t = getToday();
-  if (!data.days[t]) { data.days[t] = {amount:0,date:t}; saveData(data); }
+  const today = getToday();
+
+  // Detectar cambio de día desde la última visita
+  const lastVisit = data.lastVisit || today;
+  if (lastVisit !== today) {
+    // Nuevo día: asegurarse de que el día anterior quedó registrado correctamente
+    // (ya estaba guardado con su amount real — no tocarlo)
+    // Resetear estado de undo para el nuevo día
+    lastAdded = 0;
+    canUndo = false;
+  }
+
+  // Guardar la fecha de hoy como última visita
+  data.lastVisit = today;
+
+  // Crear entrada para hoy si no existe
+  if (!data.days[today]) {
+    data.days[today] = {amount: 0, date: today};
+  }
+
+  saveData(data);
 }
 
 function recalcStreak() {
