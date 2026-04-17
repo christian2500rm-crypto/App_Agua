@@ -263,34 +263,54 @@
 const GOAL = 2;
 const RING_CIRC = 2 * Math.PI * 33;
 
-function getToday() { return new Date().toISOString().slice(0,10); }
-
-function loadData() {
-  try { const r = localStorage.getItem('stanley_v2'); return r ? JSON.parse(r) : {days:{},streak:0,bestStreak:0,lastVisit:''}; }
-  catch(e) { return {days:{},streak:0,bestStreak:0}; }
+// ── Fecha local correcta (no UTC) ──────────────────────────────────────────
+function getToday() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
-function saveData(d) { try { localStorage.setItem('stanley_v2', JSON.stringify(d)); } catch(e){} }
+
+// ── Diferencia en días entre dos strings YYYY-MM-DD ────────────────────────
+function daysBetween(a, b) {
+  // Parsear como fecha local para evitar problemas de timezone
+  const [ay, am, ad] = a.split('-').map(Number);
+  const [by, bm, bd] = b.split('-').map(Number);
+  const da = new Date(ay, am - 1, ad);
+  const db = new Date(by, bm - 1, bd);
+  return Math.round((da - db) / 86400000);
+}
+
+// ── Persistencia ───────────────────────────────────────────────────────────
+function loadData() {
+  try {
+    const r = localStorage.getItem('stanley_v2');
+    return r ? JSON.parse(r) : {days:{}, streak:0, bestStreak:0, lastVisit:''};
+  } catch(e) {
+    return {days:{}, streak:0, bestStreak:0, lastVisit:''};
+  }
+}
+function saveData(d) {
+  try { localStorage.setItem('stanley_v2', JSON.stringify(d)); } catch(e) {}
+}
 
 let data = loadData();
 let lastAdded = 0, canUndo = false;
 
+// ── Gestión de días ────────────────────────────────────────────────────────
 function checkDay() {
   const today = getToday();
-
-  // Detectar cambio de día desde la última visita
   const lastVisit = data.lastVisit || today;
+
   if (lastVisit !== today) {
-    // Nuevo día: asegurarse de que el día anterior quedó registrado correctamente
-    // (ya estaba guardado con su amount real — no tocarlo)
-    // Resetear estado de undo para el nuevo día
+    // Nuevo día: resetear undo
     lastAdded = 0;
     canUndo = false;
   }
 
-  // Guardar la fecha de hoy como última visita
   data.lastVisit = today;
 
-  // Crear entrada para hoy si no existe
   if (!data.days[today]) {
     data.days[today] = {amount: 0, date: today};
   }
@@ -298,23 +318,57 @@ function checkDay() {
   saveData(data);
 }
 
+// ── Cálculo de racha ───────────────────────────────────────────────────────
 function recalcStreak() {
-  const sorted = Object.keys(data.days).sort().reverse();
   const today = getToday();
-  let streak = 0, prev = null;
+  // Ordenar todos los días de más reciente a más antiguo
+  const sorted = Object.keys(data.days).sort().reverse();
+
+  let streak = 0;
+  let expecting = null; // fecha que esperamos en la siguiente iteración
+
   for (let i = 0; i < sorted.length; i++) {
     const d = sorted[i];
-    if (d === today && data.days[d].amount < GOAL) break;
-    if (prev) { const diff = (new Date(prev) - new Date(d)) / 86400000; if (diff > 1) break; }
-    if (data.days[d].amount >= GOAL) { streak++; prev = d; } else break;
+    const dayData = data.days[d];
+
+    // Si es hoy y no ha cumplido, no cuenta para la racha pero seguimos buscando ayer
+    if (d === today && dayData.amount < GOAL) {
+      expecting = d; // el siguiente día esperado es ayer
+      continue;
+    }
+
+    // Si cumplió el objetivo este día
+    if (dayData.amount >= GOAL) {
+      if (expecting === null) {
+        // Primera entrada con objetivo cumplido
+        streak++;
+        expecting = d;
+      } else {
+        // Verificar que es exactamente el día anterior al esperado
+        const diff = daysBetween(expecting, d);
+        if (diff === 1) {
+          streak++;
+          expecting = d;
+        } else {
+          break; // hubo un hueco, racha rota
+        }
+      }
+    } else {
+      // Día sin objetivo cumplido que no es hoy → racha rota
+      if (expecting !== null) break;
+    }
   }
+
   data.streak = streak;
-  if (streak > (data.bestStreak||0)) data.bestStreak = streak;
+  if (streak > (data.bestStreak || 0)) data.bestStreak = streak;
   saveData(data);
 }
 
-function getTotalDone() { return Object.values(data.days).filter(d=>d.amount>=GOAL).length; }
+function getTotalDone() {
+  return Object.values(data.days).filter(d => d.amount >= GOAL).length;
+}
 
+// ── Estado del perrito ─────────────────────────────────────────────────────
 function getDogState(amount) {
   if (amount >= GOAL) return 'happy';
   if (amount >= 1) return 'mid';
@@ -338,7 +392,7 @@ function getMoodColor(amount) {
 
 function updateDogDisplay(amount, animate) {
   const state = getDogState(amount);
-  ['sad','mid','happy'].forEach(s => {
+  ['sad', 'mid', 'happy'].forEach(s => {
     const el = document.getElementById('dog-' + s);
     if (s === state) {
       el.classList.remove('hidden');
@@ -358,9 +412,11 @@ function updateDogDisplay(amount, animate) {
   moodEl.style.color = getMoodColor(amount);
 }
 
+// ── Render pantalla principal ──────────────────────────────────────────────
 function renderHome() {
   checkDay();
   recalcStreak();
+
   const today = getToday();
   const amount = data.days[today]?.amount || 0;
   const pct = Math.min(amount / GOAL, 1);
@@ -370,15 +426,16 @@ function renderHome() {
   const circle = document.getElementById('prog-circle');
   circle.style.strokeDashoffset = offset.toFixed(1);
   circle.className = 'ring-fill' + (isDone ? ' done' : '');
-
   document.getElementById('ring-pct').textContent = Math.round(pct * 100) + '%';
 
-  const amountStr = amount % 1 === 0 ? amount : amount.toFixed(2).replace(/\.?0+$/,'');
-  document.getElementById('prog-amount').innerHTML = amountStr + ' <span style="font-size:14px;font-weight:400;color:var(--color-text-secondary)">Stanleys</span>';
+  const amountStr = amount % 1 === 0 ? amount : amount.toFixed(2).replace(/\.?0+$/, '');
+  document.getElementById('prog-amount').innerHTML =
+    amountStr + ' <span style="font-size:14px;font-weight:400;color:var(--color-text-secondary)">Stanleys</span>';
 
   const rem = Math.max(GOAL - amount, 0);
-  const remStr = rem % 1 === 0 ? rem : rem.toFixed(2).replace(/\.?0+$/,'');
-  document.getElementById('prog-remaining').textContent = isDone ? '¡Objetivo alcanzado hoy! 🎉' : `Faltan ${remStr} para tu objetivo`;
+  const remStr = rem % 1 === 0 ? rem : rem.toFixed(2).replace(/\.?0+$/, '');
+  document.getElementById('prog-remaining').textContent =
+    isDone ? '¡Objetivo alcanzado hoy! 🎉' : `Faltan ${remStr} para tu objetivo`;
 
   document.getElementById('done-banner').className = 'done-banner' + (isDone ? ' show' : '');
 
@@ -395,13 +452,17 @@ function renderHome() {
   const emoji = document.getElementById('streak-emoji');
   emoji.textContent = streak === 0 ? '💧' : streak < 3 ? '🌊' : streak < 7 ? '🔥' : '🏆';
 
-  const msgs = ['','¡Gran inicio! Sigue así 💪','¡Dos días seguidos!','3 días — ya es hábito 🌊','🔥 ¡4 días!',`🔥 5 días seguidos. ¡Imparable!`];
+  const msgs = ['', '¡Gran inicio! Sigue así 💪', '¡Dos días seguidos!', '3 días — ya es hábito 🌊', '🔥 ¡4 días!', '🔥 5 días seguidos. ¡Imparable!'];
   const mot = document.getElementById('motivational');
-  const msg = streak >= 7 ? `🏆 ${streak} días seguidos. ¡Leyenda!` : streak >= 5 ? `🔥 ${streak} días seguidos. ¡No pares!` : (msgs[streak] || '');
+  const msg = streak >= 7
+    ? `🏆 ${streak} días seguidos. ¡Leyenda!`
+    : streak >= 5
+      ? `🔥 ${streak} días seguidos. ¡No pares!`
+      : (msgs[streak] || '');
   mot.textContent = msg;
 
   const d = new Date();
-  const ds = d.toLocaleDateString('es-PA', {weekday:'long',day:'numeric',month:'long'});
+  const ds = d.toLocaleDateString('es-PA', {weekday: 'long', day: 'numeric', month: 'long'});
   document.getElementById('today-date').textContent = ds.charAt(0).toUpperCase() + ds.slice(1);
 
   const ub = document.getElementById('undo-btn');
@@ -409,6 +470,7 @@ function renderHome() {
   ub.style.pointerEvents = canUndo ? 'auto' : 'none';
 }
 
+// ── Añadir agua ────────────────────────────────────────────────────────────
 function addWater(amount) {
   checkDay();
   const today = getToday();
@@ -433,12 +495,13 @@ function addWater(amount) {
   pctEl.classList.add('popped');
 
   if (!wasDone && newAmount >= GOAL) {
-    try { if (navigator.vibrate) navigator.vibrate([80,40,120]); } catch(e) {}
+    try { if (navigator.vibrate) navigator.vibrate([80, 40, 120]); } catch(e) {}
   }
 
   renderHome();
 }
 
+// ── Deshacer ───────────────────────────────────────────────────────────────
 document.getElementById('undo-btn').onclick = function() {
   if (!canUndo) return;
   const today = getToday();
@@ -449,37 +512,60 @@ document.getElementById('undo-btn').onclick = function() {
   renderHome();
 };
 
+// ── Historial ──────────────────────────────────────────────────────────────
 function renderHistory() {
   const list = document.getElementById('history-list');
   const today = getToday();
-  const sorted = Object.keys(data.days).filter(d => d !== today || data.days[d].amount > 0).sort().reverse();
+
+  // Mostrar TODOS los días registrados incluido hoy (para ver progreso actual)
+  const sorted = Object.keys(data.days).sort().reverse();
+
   if (sorted.length === 0) {
     list.innerHTML = '<div class="empty-history">Aún no hay días registrados.<br>¡Empieza hoy!</div>';
     document.getElementById('history-summary').textContent = '';
     return;
   }
-  const done = sorted.filter(d => data.days[d].amount >= GOAL).length;
-  document.getElementById('history-summary').textContent = `${done} de ${sorted.length} días cumplidos`;
+
+  // Días cumplidos excluyendo hoy si aún no ha cumplido (para el contador)
+  const pastDays = sorted.filter(d => d !== today);
+  const donePast = pastDays.filter(d => data.days[d].amount >= GOAL).length;
+  const totalPast = pastDays.length;
+  const todayDone = (data.days[today]?.amount || 0) >= GOAL;
+
+  const doneTotal = donePast + (todayDone ? 1 : 0);
+  const totalTotal = totalPast + 1;
+  document.getElementById('history-summary').textContent =
+    `${doneTotal} de ${totalTotal} días cumplidos`;
+
   list.innerHTML = sorted.map(d => {
     const day = data.days[d];
     const pct = Math.min((day.amount / GOAL) * 100, 100);
     const ok = day.amount >= GOAL;
-    const dateObj = new Date(d + 'T12:00:00');
-    const label = dateObj.toLocaleDateString('es-PA', {weekday:'long',day:'numeric',month:'short'});
-    const amtStr = day.amount % 1 === 0 ? day.amount : day.amount.toFixed(2).replace(/\.?0+$/,'');
+    const isToday = d === today;
+
+    // Parsear fecha como local, no UTC
+    const [yr, mo, dy] = d.split('-').map(Number);
+    const dateObj = new Date(yr, mo - 1, dy);
+    const label = dateObj.toLocaleDateString('es-PA', {weekday: 'long', day: 'numeric', month: 'short'});
+    const amtStr = day.amount % 1 === 0 ? day.amount : day.amount.toFixed(2).replace(/\.?0+$/, '');
+
+    // Hoy en progreso: icono especial
+    const icon = isToday && !ok ? '⏳' : ok ? '✅' : '❌';
+
     return `<div class="history-item">
-      <span class="history-icon">${ok ? '✅' : '❌'}</span>
+      <span class="history-icon">${icon}</span>
       <div class="history-info">
-        <div class="history-date">${label.charAt(0).toUpperCase()+label.slice(1)}</div>
+        <div class="history-date">${label.charAt(0).toUpperCase() + label.slice(1)}${isToday ? ' <span style="font-size:11px;color:#1a8cff">hoy</span>' : ''}</div>
         <div class="history-amount">${amtStr} / ${GOAL} Stanleys</div>
       </div>
       <div class="history-bar-wrap">
-        <div class="history-bar ${ok?'ok':'nok'}" style="width:${pct.toFixed(1)}%"></div>
+        <div class="history-bar ${ok ? 'ok' : 'nok'}" style="width:${pct.toFixed(1)}%"></div>
       </div>
     </div>`;
   }).join('');
 }
 
+// ── Navegación ─────────────────────────────────────────────────────────────
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -491,8 +577,20 @@ function showScreen(name) {
 
 renderHome();
 
-// ─── Theme Toggle ───────────────────────────────────────────────────────────
+// ── Tema ───────────────────────────────────────────────────────────────────
 let currentTheme = localStorage.getItem('stanley_theme') || 'dark';
+
+function updateThemeColorMeta(theme) {
+  const meta = document.getElementById('theme-color-meta');
+  if (!meta) return;
+  if (theme === 'dark') {
+    meta.content = '#1c1c1e';
+    document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]').content = 'black-translucent';
+  } else {
+    meta.content = '#ffffff';
+    document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]').content = 'default';
+  }
+}
 
 function applyTheme(theme) {
   const app = document.getElementById('app');
@@ -505,56 +603,24 @@ function applyTheme(theme) {
     app.classList.add('force-dark');
     btn.textContent = '☀️';
   } else {
-    // auto - follow system
     btn.textContent = window.matchMedia('(prefers-color-scheme: dark)').matches ? '☀️' : '🌙';
   }
+  updateThemeColorMeta(theme);
 }
 
 function toggleTheme() {
-  if (currentTheme === 'auto') {
-    // detect current appearance to decide which to switch to
-    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    currentTheme = isDark ? 'light' : 'dark';
-  } else if (currentTheme === 'light') {
+  if (currentTheme === 'light') {
     currentTheme = 'dark';
   } else {
     currentTheme = 'light';
   }
   localStorage.setItem('stanley_theme', currentTheme);
   applyTheme(currentTheme);
-
-// Update theme-color meta for Safari status bar
-function updateThemeColorMeta(theme) {
-  const meta = document.getElementById('theme-color-meta');
-  if (!meta) return;
-  if (theme === 'dark') {
-    meta.content = '#1c1c1e';
-    document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]').content = 'black-translucent';
-  } else {
-    meta.content = '#ffffff';
-    document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]').content = 'default';
-  }
-}
-updateThemeColorMeta(currentTheme);
 }
 
 applyTheme(currentTheme);
 
-// Update theme-color meta for Safari status bar
-function updateThemeColorMeta(theme) {
-  const meta = document.getElementById('theme-color-meta');
-  if (!meta) return;
-  if (theme === 'dark') {
-    meta.content = '#1c1c1e';
-    document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]').content = 'black-translucent';
-  } else {
-    meta.content = '#ffffff';
-    document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]').content = 'default';
-  }
-}
-updateThemeColorMeta(currentTheme);
-
-// ─── Reset Day ───────────────────────────────────────────────────────────────
+// ── Reiniciar día ──────────────────────────────────────────────────────────
 function showResetModal() {
   document.getElementById('reset-modal').classList.add('show');
 }
