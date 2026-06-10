@@ -174,6 +174,20 @@
   .modal-confirm { background: var(--color-danger); color: white; }
   .modal-primary { background: var(--color-accent); color: white; }
 
+  /* Celebración 100 días — spa + masaje */
+  .spa-celebration { background: rgba(0,0,0,0.65); z-index: 320; }
+  .spa-confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .spa-box { position: relative; border: 2px solid rgba(255, 214, 10, 0.8); box-shadow: 0 10px 40px rgba(255, 159, 10, 0.3); background: linear-gradient(160deg, rgba(255,214,10,0.12), rgba(255,107,203,0.10) 55%, rgba(26,140,255,0.10)), var(--color-background-primary); }
+  .spa-crown { font-size: 64px; display: inline-block; animation: spaCrown 1.6s ease-in-out infinite; filter: drop-shadow(0 4px 12px rgba(255, 214, 10, 0.6)); }
+  @keyframes spaCrown { 0%,100% { transform: translateY(0) rotate(-4deg) scale(1); } 50% { transform: translateY(-10px) rotate(4deg) scale(1.08); } }
+  .spa-title { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin: 8px 0 6px; background: linear-gradient(90deg, #ff9f0a, #ff6bcb, #bf5af2); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .spa-greeting { font-size: 14px; color: var(--color-text-secondary); line-height: 1.5; margin-bottom: 16px; }
+  .spa-prize { background: var(--color-background-primary); border: 1.5px dashed #ff6bcb; border-radius: 14px; padding: 14px 12px; margin-bottom: 14px; }
+  .spa-prize-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--color-text-tertiary); margin-bottom: 6px; }
+  .spa-prize-text { font-size: 20px; font-weight: 700; color: var(--color-text-primary); line-height: 1.3; }
+  .spa-note { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 16px; line-height: 1.45; }
+  .spa-btn { width: 100%; background: linear-gradient(90deg, #ff9f0a, #ff6bcb); color: white; }
+
   /* Settings rows inside modal */
   .settings-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-top: 0.5px solid var(--color-border-tertiary); text-align: left; }
   .settings-row:first-of-type { border-top: none; }
@@ -472,6 +486,22 @@
     </div>
   </div>
 
+  <!-- Celebración 100 días: spa + masaje -->
+  <div class="modal-overlay spa-celebration" id="spa-modal" role="dialog" aria-modal="true">
+    <div class="spa-confetti" id="spa-confetti"></div>
+    <div class="modal-box spa-box">
+      <div class="spa-crown">👑</div>
+      <div class="spa-title">¡100 DÍAS SEGUIDOS!</div>
+      <div class="spa-greeting" id="spa-greeting">¡Enhorabuena, Andreah! Cien días seguidos cuidándote, sin fallar ni uno.</div>
+      <div class="spa-prize">
+        <div class="spa-prize-label">🎁 Has ganado</div>
+        <div class="spa-prize-text">Un día de pasadía<br>con SPA 💆‍♀️</div>
+      </div>
+      <div class="spa-note">Te lo has ganado a base de constancia, sorbo a sorbo. Eres increíble. ¡A disfrutarlo! 🥂</div>
+      <button class="modal-btn spa-btn" onclick="hideSpaCelebration()">¡A celebrarlo! 🎉</button>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -697,6 +727,7 @@ const ACHIEVEMENTS = [
   { id: 'streak_7',     icon: '⭐', label: 'Una semana',         check: d => d.bestStreak >= 7 },
   { id: 'streak_14',    icon: '🌟', label: 'Dos semanas',         check: d => d.bestStreak >= 14 },
   { id: 'streak_30',    icon: '🏆', label: 'Un mes',             check: d => d.bestStreak >= 30 },
+  { id: 'streak_100',   icon: '👑', label: '100 días seguidos',  check: d => d.bestStreak >= 100 },
   { id: 'total_10',     icon: '🌊', label: '10 días cumplidos',  check: d => Object.values(d.days).filter(x => x.amount >= d.settings.goal).length >= 10 },
   { id: 'over_goal',    icon: '💪', label: 'Más del objetivo',   check: d => Object.values(d.days).some(x => x.amount >= d.settings.goal * 1.5) },
 ];
@@ -715,7 +746,46 @@ function checkAchievements() {
     // Soft tactile feedback for unlock
     try { if (data.settings.vibrate && navigator.vibrate) navigator.vibrate([40, 20, 40]); } catch(e){}
   }
+  // Pantalla especial al alcanzar los 100 días (solo la primera vez)
+  if (!before.has('streak_100') && data.achievements.includes('streak_100')) {
+    showSpaCelebration();
+  }
   return newUnlock;
+}
+
+// ── Celebración especial: 100 días → día de spa + masaje ──────────────────
+function showSpaCelebration() {
+  const name = (data.settings.name || '').trim() || 'Andreah';
+  document.getElementById('spa-greeting').textContent =
+    `¡Enhorabuena, ${name}! Cien días seguidos cuidándote, sin fallar ni uno. Esto ya es otro nivel.`;
+  document.getElementById('spa-modal').classList.add('show');
+  fireSpaConfetti();
+  try { if (data.settings.vibrate && navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 200]); } catch(e) {}
+}
+
+function hideSpaCelebration() {
+  document.getElementById('spa-modal').classList.remove('show');
+  document.getElementById('spa-confetti').innerHTML = '';
+}
+
+function fireSpaConfetti() {
+  if (!data.settings.confetti) return;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const container = document.getElementById('spa-confetti');
+  const colors = ['#ffd60a','#ff9f0a','#ff6bcb','#bf5af2','#ffffff'];
+  for (let i = 0; i < 80; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    piece.style.left = Math.random() * 100 + '%';
+    piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.animationDuration = (2.2 + Math.random() * 1.8) + 's';
+    piece.style.animationDelay = (Math.random() * 1.2) + 's';
+    piece.style.width = (6 + Math.random() * 8) + 'px';
+    piece.style.height = piece.style.width;
+    piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+    container.appendChild(piece);
+  }
+  setTimeout(() => { container.innerHTML = ''; }, 5500);
 }
 
 function renderAchievements() {
@@ -723,7 +793,8 @@ function renderAchievements() {
   const unlocked = new Set(data.achievements);
   grid.innerHTML = ACHIEVEMENTS.map(a => {
     const u = unlocked.has(a.id);
-    return `<div class="ach-item ${u ? 'unlocked' : ''}" title="${a.label}${u ? '' : ' (bloqueado)'}">
+    const reopen = u && a.id === 'streak_100' ? ' onclick="showSpaCelebration()" style="cursor:pointer"' : '';
+    return `<div class="ach-item ${u ? 'unlocked' : ''}" title="${a.label}${u ? '' : ' (bloqueado)'}"${reopen}>
       ${u ? a.icon : '🔒'}
       <span class="ach-label">${a.label}</span>
     </div>`;
