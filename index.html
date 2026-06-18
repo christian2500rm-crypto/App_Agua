@@ -144,6 +144,16 @@
   .history-bar.nok { background: var(--color-accent); }
   .history-bar.empty { background: var(--color-border-secondary); }
   .empty-history { text-align: center; padding: 40px 20px; color: var(--color-text-tertiary); font-size: 14px; }
+  /* Editable history rows + add-past-day */
+  .history-item.editable { cursor: pointer; transition: transform 0.12s, background 0.12s; }
+  .history-item.editable:active { transform: scale(0.985); background: var(--color-background-secondary); }
+  .history-edit-hint { font-size: 13px; color: var(--color-text-tertiary); margin-left: 2px; }
+  .history-add-wrap { padding: 0 16px; margin-bottom: 12px; }
+  .add-past-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 12px; border: 1px dashed var(--color-border-secondary); border-radius: 14px; background: var(--color-background-primary); color: var(--color-accent); font-size: 14px; font-weight: 600; cursor: pointer; transition: transform 0.12s, background 0.12s; }
+  .add-past-btn:active { transform: scale(0.98); background: var(--color-background-secondary); }
+  .edit-day-date-label { font-size: 15px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 4px; }
+  .edit-day-goal-note { font-size: 12px; color: var(--color-text-tertiary); margin-top: 6px; }
+  .edit-day-error { font-size: 12px; color: var(--color-danger); margin-top: 8px; min-height: 14px; }
 
   /* Stats summary on history screen */
   .hist-summary-card { padding: 14px 18px; }
@@ -388,6 +398,9 @@
         </div>
       </div>
     </div>
+    <div class="history-add-wrap">
+      <button class="add-past-btn" onclick="openAddPastDay()">➕ Añadir o corregir un día pasado</button>
+    </div>
     <div class="history-list" id="history-list"></div>
   </div>
 
@@ -470,6 +483,29 @@
       <div class="modal-btns">
         <button class="modal-btn modal-cancel" onclick="hideCustomAmount()">Cancelar</button>
         <button class="modal-btn modal-primary" onclick="confirmCustomAmount()">Añadir</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Editar / añadir un día pasado -->
+  <div class="modal-overlay" id="edit-day-modal" role="dialog" aria-modal="true">
+    <div class="modal-box">
+      <div class="modal-title" id="edit-day-title">✏️ Editar día</div>
+      <div class="edit-day-date-label" id="edit-day-date-label"></div>
+      <div id="edit-day-date-row" style="margin:8px 0">
+        <input type="date" id="edit-day-date" class="settings-input" style="width:100%;font-size:15px;padding:10px;text-align:left">
+      </div>
+      <div class="modal-msg" style="margin-bottom:10px">¿Cuántos Stanleys se bebió ese día?</div>
+      <div class="custom-amt-buttons" id="edit-day-buttons"></div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin:8px 0">
+        <input type="number" id="edit-day-input" class="settings-input" min="0" max="20" step="0.05" value="2" style="width:100px;font-size:18px;padding:10px">
+        <span style="color:var(--color-text-secondary);font-size:14px">Stanleys</span>
+      </div>
+      <div class="edit-day-goal-note" id="edit-day-goal-note"></div>
+      <div class="edit-day-error" id="edit-day-error"></div>
+      <div class="modal-btns">
+        <button class="modal-btn modal-cancel" onclick="hideEditDay()">Cancelar</button>
+        <button class="modal-btn modal-primary" onclick="confirmEditDay()">Guardar</button>
       </div>
     </div>
   </div>
@@ -614,33 +650,31 @@ function checkDay() {
 function recalcStreak() {
   const GOAL = data.settings.goal;
   const today = getToday();
-  const sorted = Object.keys(data.days).sort().reverse();
-  let streak = 0;
-  let expecting = null;
+  // Conjunto de días cumplidos (>= objetivo).
+  const done = new Set(
+    Object.keys(data.days).filter(d => (data.days[d].amount || 0) >= GOAL)
+  );
 
-  for (const d of sorted) {
-    const day = data.days[d];
-    if (d === today && day.amount < GOAL) {
-      // Today hasn't hit goal yet; skip and consider yesterday next
-      expecting = d;
-      continue;
-    }
-    if (day.amount >= GOAL) {
-      if (expecting === null) {
-        streak++;
-        expecting = d;
-      } else {
-        const diff = daysBetween(expecting, d);
-        if (diff === 1) { streak++; expecting = d; }
-        else if (diff === 0) { /* same day, shouldn't happen */ }
-        else break;
-      }
-    } else {
-      if (expecting !== null) break;
-    }
+  // Tramo consecutivo más largo de TODO el historial → alimenta el récord y los
+  // logros. Así, corregir un día olvidado recupera la mejor racha aunque ese
+  // tramo no sea contiguo con hoy.
+  let longest = 0;
+  for (const d of done) {
+    if (done.has(shiftDateStr(d, -1))) continue; // contar cada tramo solo desde su inicio
+    let run = 0, cur = d;
+    while (done.has(cur)) { run++; cur = shiftDateStr(cur, 1); }
+    if (run > longest) longest = run;
   }
-  data.streak = streak;
-  if (streak > (data.bestStreak || 0)) data.bestStreak = streak;
+
+  // Racha actual: días consecutivos cumplidos que terminan hoy, o ayer si hoy
+  // todavía no se ha cumplido (no se rompe solo porque aún no has bebido hoy).
+  let current = 0;
+  let cursor = done.has(today) ? today : shiftDateStr(today, -1);
+  while (done.has(cursor)) { current++; cursor = shiftDateStr(cursor, -1); }
+
+  data.streak = current;
+  // El récord nunca baja; solo sube al detectar un tramo más largo.
+  data.bestStreak = Math.max(data.bestStreak || 0, longest);
   saveData(data);
 }
 
@@ -977,13 +1011,14 @@ function renderHistory() {
     const amtStr = formatAmount(day.amount);
     const icon = isToday && !ok ? '⏳' : ok ? '✅' : '❌';
     const barCls = day.amount === 0 ? 'empty' : ok ? 'ok' : 'nok';
-    return `<div class="history-item">
+    return `<div class="history-item editable" onclick="openEditDay('${d}')" title="Tocar para editar">
       <span class="history-icon" aria-hidden="true">${icon}</span>
       <div class="history-info">
         <div class="history-date">${label.charAt(0).toUpperCase() + label.slice(1)}${isToday ? ' <span style="font-size:11px;color:var(--color-accent)">· hoy</span>' : ''}</div>
         <div class="history-amount">${amtStr} / ${formatAmount(GOAL)} Stanleys</div>
       </div>
       <div class="history-bar-wrap"><div class="history-bar ${barCls}" style="width:${p.toFixed(1)}%"></div></div>
+      <span class="history-edit-hint" aria-hidden="true">✏️</span>
     </div>`;
   }).join('');
 }
@@ -1088,6 +1123,99 @@ function confirmCustomAmount() {
   if (isNaN(v) || v <= 0 || v > 10) return;
   hideCustomAmount();
   addWater(Math.round(v * 100) / 100);
+}
+
+// ── Editar / añadir un día pasado ──────────────────────────────────────────
+// Permite corregir un día olvidado. Al guardar se recalcula la racha entera
+// desde cero (recalcStreak) y se revisan los logros (checkAchievements), así
+// que la racha "vuelve en sí" y se desbloquean los logros que correspondan.
+function editDayPresets() {
+  const g = data.settings.goal;
+  const presets = [0, Math.round((g / 2) * 100) / 100, g, Math.round((g * 1.5) * 100) / 100];
+  return [...new Set(presets)].sort((a, b) => a - b);
+}
+
+function renderEditDayPresets(selected) {
+  const g = data.settings.goal;
+  const wrap = document.getElementById('edit-day-buttons');
+  wrap.innerHTML = editDayPresets().map(v => {
+    const label = v === 0 ? '0' : (v === g ? `${formatAmount(v)} ✅` : formatAmount(v));
+    const sel = Math.abs(v - selected) < 1e-9 ? ' selected' : '';
+    return `<button class="custom-amt-btn${sel}" data-v="${v}" onclick="selectEditAmt(${v})">${label}</button>`;
+  }).join('');
+}
+
+function selectEditAmt(v) {
+  document.getElementById('edit-day-input').value = v;
+  document.querySelectorAll('#edit-day-buttons .custom-amt-btn').forEach(b => {
+    b.classList.toggle('selected', Math.abs(parseFloat(b.dataset.v) - v) < 1e-9);
+  });
+}
+
+function setEditDayGoalNote() {
+  document.getElementById('edit-day-goal-note').textContent =
+    `Objetivo diario: ${formatAmount(data.settings.goal)} Stanleys`;
+  document.getElementById('edit-day-error').textContent = '';
+}
+
+function openEditDay(dateStr) {
+  const day = data.days[dateStr];
+  const amt = day ? day.amount : 0;
+  document.getElementById('edit-day-title').textContent = '✏️ Editar día';
+  const [yr, mo, dy] = dateStr.split('-').map(Number);
+  const label = new Date(yr, mo - 1, dy).toLocaleDateString('es-PA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const lblEl = document.getElementById('edit-day-date-label');
+  lblEl.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+  lblEl.style.display = '';
+  document.getElementById('edit-day-date-row').style.display = 'none';
+  document.getElementById('edit-day-date').value = dateStr;
+  document.getElementById('edit-day-input').value = amt;
+  renderEditDayPresets(amt);
+  setEditDayGoalNote();
+  document.getElementById('edit-day-modal').classList.add('show');
+}
+
+function openAddPastDay() {
+  const today = getToday();
+  document.getElementById('edit-day-title').textContent = '➕ Añadir día pasado';
+  document.getElementById('edit-day-date-label').style.display = 'none';
+  document.getElementById('edit-day-date-row').style.display = '';
+  const dInput = document.getElementById('edit-day-date');
+  dInput.max = today;
+  dInput.value = shiftDateStr(today, -1);
+  document.getElementById('edit-day-input').value = data.settings.goal;
+  renderEditDayPresets(data.settings.goal);
+  setEditDayGoalNote();
+  document.getElementById('edit-day-modal').classList.add('show');
+}
+
+function hideEditDay() { document.getElementById('edit-day-modal').classList.remove('show'); }
+
+function confirmEditDay() {
+  const today = getToday();
+  const dateStr = document.getElementById('edit-day-date').value;
+  const errEl = document.getElementById('edit-day-error');
+  if (!dateStr) { errEl.textContent = 'Elige una fecha.'; return; }
+  if (dateStr > today) { errEl.textContent = 'No puedes editar días futuros.'; return; }
+  const v = parseFloat(document.getElementById('edit-day-input').value);
+  if (isNaN(v) || v < 0 || v > 20) { errEl.textContent = 'Escribe una cantidad entre 0 y 20.'; return; }
+
+  const GOAL = data.settings.goal;
+  const existing = data.days[dateStr];
+  const wasDone = existing ? existing.amount >= GOAL : false;
+  data.days[dateStr] = { amount: Math.round(v * 100) / 100, date: dateStr };
+  // Editar hoy invalida el "deshacer" de la pantalla principal
+  if (dateStr === today) { canUndo = false; lastAdded = 0; }
+  saveData(data);
+  recalcStreak();                       // la racha vuelve a calcularse entera
+
+  const nowDone = data.days[dateStr].amount >= GOAL;
+  hideEditDay();
+  try { if (data.settings.vibrate && navigator.vibrate) navigator.vibrate(nowDone && !wasDone ? [60, 30, 90] : 20); } catch (e) {}
+  if (nowDone && !wasDone) fireConfetti();
+  checkAchievements();                  // desbloquea logros (incl. la pantalla de 100 días)
+  renderHistory();
+  renderHome();
 }
 
 // ── Wipe ───────────────────────────────────────────────────────────────────
